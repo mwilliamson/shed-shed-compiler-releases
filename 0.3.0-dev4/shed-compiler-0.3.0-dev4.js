@@ -1653,8 +1653,20 @@ $shed.exportModule("shed.compiler.tokenising.tokenFilter", function() {
     var tokens = $shed.js.import("shed.compiler.tokenising.tokens");
     var results = $shed.js.import("shed.compiler.results");
     var filterTokens = $shed.function(function(input) {
-        return results.success(lists.reversed(filterTokens2($shed.memberAccess(sequences, sequences.nil), input, $shed.memberAccess(sequences, sequences.nil))));
+        return (function() {
+            var uncommentedInput = filterComments(input);
+            return results.success(lists.reversed(filterTokens2($shed.memberAccess(sequences, sequences.nil), uncommentedInput, $shed.memberAccess(sequences, sequences.nil))));
+        })();
     }).$define("filterTokens");
+    var filterComments = $shed.function(function(input) {
+        return (function() {
+            var item = input.currentItem();
+            return sequences.isEmpty(item) ? $shed.memberAccess(sequences, sequences.nil) : (function() {
+                var token = item.head();
+                return token.name().equals($shed.string("whitespace")) && nextTokenIsComment(item.tail()) ? filterComments(pop(item.tail())) : (token.name().equals($shed.string("comment")) ? filterComments(item.tail()) : sequences.cons(item.head(), filterComments(item.tail())));
+            })();
+        })();
+    }).$define("filterComments");
     var filterTokens2 = $shed.function(function(accumulator, input, indentationStack) {
         return sequences.isEmpty(input) ? lazySequences.concat(accumulator) : extractNewline(input.currentItem(), indentationStack).map($shed.function(function(filtered, rest, newIndentationStack) {
             return filterTokens2(sequences.cons(filtered, accumulator), rest, newIndentationStack);
@@ -1670,7 +1682,7 @@ $shed.exportModule("shed.compiler.tokenising.tokenFilter", function() {
                 return nextToken.name().equals($shed.string("whitespace")) ? regex.create($shed.string("\n( *)$")).exec(nextToken.value()).map($shed.function(function(regexResult) {
                     return tuple(listOf(tokens.indent(nextToken.source()), token), input.tail().currentItem().tail(), sequences.cons(regexResult.capture($shed.number(1)).length(), indentationStack));
                 })).valueOrElse() : withTail(sequences.singleton(token));
-            })).valueOrElse() : (token.name().equals($shed.string("whitespace")) ? (regex.create($shed.string("\n")).test(token.value()) && not(nextTokenIsComment(input.tail())) ? (function() {
+            })).valueOrElse() : (token.name().equals($shed.string("whitespace")) ? (regex.create($shed.string("\n")).test(token.value()) ? (function() {
                 var indentationLevel = regex.create($shed.string("\n( *)$")).exec(token.value()).map($shed.function(function(result) {
                     return result.capture($shed.number(1)).length();
                 })).valueOrElse($shed.function(function() {
@@ -1678,7 +1690,7 @@ $shed.exportModule("shed.compiler.tokenising.tokenFilter", function() {
                 }));
                 var currentIndentationLevel = currentIndentation(indentationStack);
                 return indentationLevel.equals(currentIndentationLevel) ? withTail(sequences.singleton(tokens.newline(token.source()))) : (indentationLevel.lessThan(currentIndentationLevel) ? tuple(listOf(tokens.dedent(token.source()), tokens.newline(token.source())), input, pop(indentationStack)) : withTail($shed.memberAccess(sequences, sequences.nil)));
-            })() : withTail($shed.memberAccess(sequences, sequences.nil))) : (token.name().equals($shed.string("comment")) ? withTail($shed.memberAccess(sequences, sequences.nil)) : (token.name().equals($shed.string("keyword")) && token.value().equals($shed.string("pass")) ? withTail($shed.memberAccess(sequences, sequences.nil)) : (token.name().equals($shed.string("end")) && not(sequences.isEmpty(indentationStack)) ? tuple(sequences.singleton(tokens.dedent(token.source())), input, indentationStack.tail()) : withTail(sequences.singleton(token))))));
+            })() : withTail($shed.memberAccess(sequences, sequences.nil))) : (token.name().equals($shed.string("keyword")) && token.value().equals($shed.string("pass")) ? withTail($shed.memberAccess(sequences, sequences.nil)) : (token.name().equals($shed.string("end")) && not(sequences.isEmpty(indentationStack)) ? tuple(sequences.singleton(tokens.dedent(token.source())), input, indentationStack.tail()) : withTail(sequences.singleton(token)))));
         })();
     }).$define("extractNewline");
     var nextTokenIsComment = $shed.function(function(input) {
